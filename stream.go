@@ -33,8 +33,6 @@ func prepareAndSendStream() {
 }
 
 func flushStream(records []*kinesis.PutRecordsRequestEntry) {
-	//defer resetJsonBatch()
-
 	if len(records) == 0 {
 		fmt.Println("Nenhum record para enviar, retornando")
 		return

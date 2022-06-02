@@ -25,6 +25,7 @@ var (
 
 const (
 	batch_max_length int = 200
+	cache_timeout        = 3 * time.Second
 )
 
 func init() {
@@ -50,64 +51,61 @@ func main() {
 	streamName = aws.String(producer.stream)
 	//describeStream(client, streamName)
 
-	go listenToChannel()
 	go payWorker()
 
 	for {
-		fmt.Println("main thread doing other work")
+		fmt.Println("Akkad main thread doing other work")
 		time.Sleep(2 * time.Second)
 	}
 }
 
-func listenToChannel() {
-	ticker := time.NewTicker(4000 * time.Millisecond)
-
-	go func() {
-		for {
-			select {
-			case record := <-channel:
-				jsonBatch = append(jsonBatch, record)
-
-				if len(jsonBatch) == batch_max_length { // ultimo batch nunca vai enviar, colocar outro parametro (tempo?)
-					fmt.Println("Enviando batch pois atingiu limite")
-					prepareAndSendStream()
-				}
-			default:
-				fmt.Println("Channel vazio, esperando pay worker")
-				time.Sleep(200 * time.Millisecond)
-			}
-		}
-	}()
-
-	go func() {
-		for {
-			select {
-			case <-ticker.C:
-				fmt.Println("Enviando batch automaticamente após 4sec")
-				prepareAndSendStream()
-			}
-		}
-	}()
-}
-
 func payWorker() {
+	go listenToChannel()
+
 	for {
 		fmt.Println("PayWorker running")
-		records := make([]*Payment, 5025)
+		records := make([]*Payment, 1089)
 		mockPayments(records)
 
-		go func() {
-			for _, payment := range records {
-				paymentJson, err := json.Marshal(payment)
-				if err != nil {
-					fmt.Println(err)
-					return
-				}
-				channel <- string(paymentJson) + "\n"
-			}
-		}()
+		go sendPaymentsToChannel(records)
 
 		time.Sleep(10 * time.Second)
+	}
+}
+
+func listenToChannel() {
+	ticker := time.NewTicker(cache_timeout)
+
+	for {
+		select {
+		case record := <-channel:
+			jsonBatch = append(jsonBatch, record)
+
+			if len(jsonBatch) == batch_max_length {
+				fmt.Println("Enviando batch pois atingiu limite")
+
+				ticker.Stop()
+				prepareAndSendStream()
+				ticker = time.NewTicker(cache_timeout)
+			}
+		case <-ticker.C:
+			fmt.Println("Enviando batch automaticamente após 3sec")
+			prepareAndSendStream()
+		default:
+			fmt.Println("Channel vazio, esperando registros do PayWorker")
+			time.Sleep(200 * time.Millisecond)
+		}
+	}
+}
+
+func sendPaymentsToChannel(records []*Payment) {
+	for _, payment := range records {
+		paymentJson, err := json.Marshal(payment)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		channel <- string(paymentJson) + "\n"
 	}
 }
 
