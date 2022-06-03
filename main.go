@@ -1,12 +1,10 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"math/rand"
 	"os"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -18,14 +16,14 @@ var (
 	producer   AWSKinesis
 	client     *kinesis.Kinesis
 	streamName *string
-	channel    chan string
-	jsonBatch  []string
-	mutex      sync.Mutex
+	channel    chan *kinesis.PutRecordsRequestEntry
 )
 
 const (
-	batch_max_length int = 200
-	cache_timeout        = 3 * time.Second
+	batchMaxLength       int = 500
+	defaultFlushInterval     = 2 * time.Second
+	maxRecordSize            = 1 << 20 // 1MiB
+	maxRequestSize           = 5 << 20 // 5MiB
 )
 
 func init() {
@@ -42,8 +40,7 @@ func init() {
 		sessionToken:    os.Getenv("AWS_SESSION_TOKEN"),
 	}
 
-	channel = make(chan string, 50000)
-	jsonBatch = make([]string, 0)
+	channel = make(chan *kinesis.PutRecordsRequestEntry, 20000)
 }
 
 func main() {
@@ -60,52 +57,21 @@ func main() {
 }
 
 func payWorker() {
-	go listenToChannel()
+	go listenToPayWorkerChannel()
 
 	for {
 		fmt.Println("PayWorker running")
-		records := make([]*Payment, 1089)
+		records := make([]*Payment, 5089)
 		mockPayments(records)
 
-		go sendPaymentsToChannel(records)
+		go func() {
+			err := StreamPayments(records)
+			if err != nil {
+				// log err
+			}
+		}()
 
 		time.Sleep(10 * time.Second)
-	}
-}
-
-func listenToChannel() {
-	ticker := time.NewTicker(cache_timeout)
-
-	for {
-		select {
-		case record := <-channel:
-			jsonBatch = append(jsonBatch, record)
-
-			if len(jsonBatch) == batch_max_length {
-				fmt.Println("Enviando batch pois atingiu limite")
-
-				ticker.Stop()
-				prepareAndSendStream()
-				ticker = time.NewTicker(cache_timeout)
-			}
-		case <-ticker.C:
-			fmt.Println("Enviando batch automaticamente após 3sec")
-			prepareAndSendStream()
-		default:
-			fmt.Println("Channel vazio, esperando registros do PayWorker")
-			time.Sleep(200 * time.Millisecond)
-		}
-	}
-}
-
-func sendPaymentsToChannel(records []*Payment) {
-	for _, payment := range records {
-		paymentJson, err := json.Marshal(payment)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		channel <- string(paymentJson) + "\n"
 	}
 }
 
