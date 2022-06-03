@@ -1,13 +1,4 @@
-package main
-
-type AWSKinesis struct {
-	stream          string
-	region          string
-	endpoint        string
-	accessKeyID     string
-	secretAccessKey string
-	sessionToken    string
-}
+package pay_worker
 
 type Entry struct {
 	Type          string `json:"type"`
