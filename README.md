@@ -1,5 +1,5 @@
 # kinesis-producer
 
-Populate AWS credentials in .env
-go build
-go run datastream
+- Populate AWS credentials in .env
+- go build
+- go run datastream
