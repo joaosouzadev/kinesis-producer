@@ -4,16 +4,8 @@ import (
 	payworker "datastream/pkg/pay_worker"
 	streamworker "datastream/pkg/stream_worker"
 	"fmt"
-	"github.com/joho/godotenv"
 	"time"
 )
-
-func init() {
-	e := godotenv.Load()
-	if e != nil {
-		fmt.Print(e)
-	}
-}
 
 func main() {
 	go payworker.StartPayWorker()
